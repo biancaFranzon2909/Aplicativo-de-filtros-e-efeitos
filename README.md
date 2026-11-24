@@ -2,9 +2,9 @@
 
 ## Equipe
 
-Bianca Franzon
-Bruno Haefliger
-Tobias Klein
+- Bianca Franzon
+- Bruno Haefliger
+- Tobias Klein
 
 ## Descrição do Projeto
 
