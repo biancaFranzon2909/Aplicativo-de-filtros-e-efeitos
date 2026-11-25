@@ -623,7 +623,6 @@ def loop_video(estado):
             estado['idx_filtro']     = 0
             estado['historico'].clear()
             estado['historico_redo'].clear()
-            estado['detector'].ativo = False
             print("[Captura]: frame salvo — Modo Foto")
             cap.release()
             return 'foto'
