@@ -82,7 +82,7 @@ def _salvar(img):
 def _salvar_historia(estado):
     """Salva snapshot de img_trabalho + stickers antes de cada ação destrutiva."""
     snapshot = {
-        'img':      estado['img_trabalho'].copy(),
+        'img':      estado['img_trabalho'].copy() if estado['img_trabalho'] is not None else None,
         'stickers': list(estado['posicoes_stickers']),
         'anim':     estado['gerenciador_anim'].get_posicoes_snapshot(),
     }
@@ -94,12 +94,13 @@ def _desfazer(estado):
         print("[Desfazer]: nada para desfazer")
         return
     estado['historico_redo'].append({
-        'img':      estado['img_trabalho'].copy(),
+        'img':      estado['img_trabalho'].copy() if estado['img_trabalho'] is not None else None,
         'stickers': list(estado['posicoes_stickers']),
         'anim':     estado['gerenciador_anim'].get_posicoes_snapshot(),
     })
     snapshot = estado['historico'].pop()
-    estado['img_trabalho'] = snapshot['img'].copy()
+    if snapshot['img'] is not None:
+        estado['img_trabalho'] = snapshot['img'].copy()
     estado['posicoes_stickers'].clear()
     estado['posicoes_stickers'].extend(snapshot['stickers'])
     estado['gerenciador_anim'].set_posicoes_snapshot(snapshot['anim'])
@@ -110,12 +111,13 @@ def _refazer(estado):
         print("[Refazer]: nada para refazer")
         return
     estado['historico'].append({
-        'img':      estado['img_trabalho'].copy(),
+        'img':      estado['img_trabalho'].copy() if estado['img_trabalho'] is not None else None,
         'stickers': list(estado['posicoes_stickers']),
         'anim':     estado['gerenciador_anim'].get_posicoes_snapshot(),
     })
     snapshot = estado['historico_redo'].pop()
-    estado['img_trabalho'] = snapshot['img'].copy()
+    if snapshot['img'] is not None:
+        estado['img_trabalho'] = snapshot['img'].copy()
     estado['posicoes_stickers'].clear()
     estado['posicoes_stickers'].extend(snapshot['stickers'])
     estado['gerenciador_anim'].set_posicoes_snapshot(snapshot['anim'])
@@ -549,8 +551,10 @@ def loop_video(estado):
             cy_real = max(0, cy - _HUD_H)
             stickers_lista = estado['stickers_lista']
             if estado['modo_sprite'] and ger.n_sprites > 0:
+                _salvar_historia(estado)
                 ger.colocar(cx, cy_real)
             elif stickers_lista:
+                _salvar_historia(estado)
                 estado['posicoes_stickers'].append({'x': cx, 'y': cy_real, 'idx': estado['idx_sticker']})
                 nome_s = stickers_lista[estado['idx_sticker']]['nome']
                 print(f"[Sticker colocado]: {nome_s} em ({cx}, {cy_real})")
@@ -609,6 +613,12 @@ def loop_video(estado):
         elif tecla == ord('z'):
             ger.anterior()
             estado['modo_sprite'] = True
+
+        elif tecla == ord('u'):
+            _desfazer(estado)
+
+        elif tecla == ord('y'):
+            _refazer(estado)
 
         elif tecla == ord('g'):
             _salvar(para_salvar)
