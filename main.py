@@ -402,6 +402,7 @@ def loop_foto(estado):
                                                   stickers_lista, estado['idx_sticker'])
         display = ger.desenhar(display)
         display = detector.processar(display)
+        para_salvar = display
         display = _desenhar_hud(display, estado)
         cv.imshow(NOME_JANELA, display)
         filtros.tick_controles()
@@ -492,7 +493,7 @@ def loop_foto(estado):
             estado['modo_sprite'] = True
 
         elif tecla == ord('g'):
-            _salvar(display)
+            _salvar(para_salvar)
 
         elif tecla == ord('r'):
             _resetar(estado, img_original)
@@ -537,6 +538,7 @@ def loop_video(estado):
                                                   estado['stickers_lista'], estado['idx_sticker'])
         display = ger.desenhar(display)
         display = detector.processar(display)
+        para_salvar = display
         display = _desenhar_hud(display, estado)
         cv.imshow(NOME_JANELA, display)
         filtros.tick_controles()
@@ -609,7 +611,7 @@ def loop_video(estado):
             estado['modo_sprite'] = True
 
         elif tecla == ord('g'):
-            _salvar(display)
+            _salvar(para_salvar)
 
         elif tecla == ord('r'):
             _resetar(estado, img_original=None)
@@ -623,6 +625,7 @@ def loop_video(estado):
             estado['idx_filtro']     = 0
             estado['historico'].clear()
             estado['historico_redo'].clear()
+            estado['detector'].ativo = False
             print("[Captura]: frame salvo — Modo Foto")
             cap.release()
             return 'foto'
