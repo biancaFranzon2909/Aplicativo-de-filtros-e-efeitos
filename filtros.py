@@ -1,18 +1,10 @@
-"""
-filtros.py — Lista de filtros e funções de processamento de imagem.
-
-Referência dos exemplos da professora:
-  - ExemploFiltrosConvolucao.py  (blur, gaussian, canny, laplaciano, sharpen, dilate/erode)
-  - HelloChannels.py             (seleção de canais R, G, B)
-"""
+"""filtros.py — Filtros de processamento de imagem."""
 
 import cv2 as cv
 import numpy as np
 
 NOME_JANELA_CONTROLES = 'Controles'
 
-
-# ─── Utilitários ─────────────────────────────────────────────────────────────
 
 def _nada(x):
     pass
@@ -30,24 +22,19 @@ def _kernel_impar(val, minimo=3):
     return k if k % 2 == 1 else k + 1
 
 
-# ─── Criação da janela de controles (trackbars) ───────────────────────────────
-
 def criar_janela_controles():
     cv.namedWindow(NOME_JANELA_CONTROLES)
     # Kernel: 1-20 → kernel real = val*2+1 (3 a 41)
     cv.createTrackbar('Kernel',    NOME_JANELA_CONTROLES,  1, 20, _nada)
     # Sigma: 0-30 → sigma real = val/10 (0.0 a 3.0)
     cv.createTrackbar('Sigma',     NOME_JANELA_CONTROLES, 10, 30, _nada)
-    # Limiares para Canny e Limiarização
     cv.createTrackbar('Limiar1',   NOME_JANELA_CONTROLES, 50, 255, _nada)
     cv.createTrackbar('Limiar2',   NOME_JANELA_CONTROLES, 150, 255, _nada)
-    # Brilho: 0-100, 50 = neutro → beta = (val-50)*2
+    # Brilho: 50 = neutro → beta = (val-50)*2
     cv.createTrackbar('Brilho',    NOME_JANELA_CONTROLES, 50, 100, _nada)
-    # Contraste: 1-30 → alpha = val/10 (0.1 a 3.0)
+    # Contraste: val/10 → 0.1 a 3.0
     cv.createTrackbar('Contraste', NOME_JANELA_CONTROLES, 10, 30, _nada)
 
-
-# ─── Funções de filtro ────────────────────────────────────────────────────────
 
 def aplicar_blur(img):
     k = _kernel_impar(_get_tb('Kernel', 1) * 2 + 1)
@@ -63,7 +50,6 @@ def aplicar_mediana(img):
     return cv.medianBlur(img, k)
 
 def aplicar_sharpen(img):
-    # Kernel de aguçamento da professora (ExemploFiltrosConvolucao.py)
     kernel = np.array([[0, -1, 0],
                        [-1, 5, -1],
                        [0, -1, 0]], dtype=np.float32)
@@ -90,7 +76,7 @@ def aplicar_canny(img):
     return cv.cvtColor(bordas, cv.COLOR_GRAY2BGR) if len(img.shape) == 3 else bordas
 
 def aplicar_emboss(img):
-    # Kernel de relevo direcional
+    # kernel direcional de relevo
     kernel = np.array([[-2, -1,  0],
                        [-1,  1,  1],
                        [ 0,  1,  2]], dtype=np.float32)
@@ -105,7 +91,6 @@ def aplicar_cinza(img):
     return cv.cvtColor(gray, cv.COLOR_GRAY2BGR)
 
 def aplicar_sepia(img):
-    # Matriz de transformação sépia (tons quentes envelhecidos)
     img_float = img.astype(np.float32)
     b = img_float[:, :, 0]
     g = img_float[:, :, 1]
@@ -137,13 +122,10 @@ def aplicar_erosao(img):
     return cv.erode(img, elemento, iterations=1)
 
 def aplicar_posterizacao(img):
-    # Reduz o número de níveis de cor, criando visual estilo poster
     niveis = max(2, _get_tb('Limiar1', 64) // 32 + 2)  # 2-9 níveis
     fator = 256.0 / niveis
     return np.clip((img // fator) * fator, 0, 255).astype(np.uint8)
 
-
-# ─── Lista de filtros disponíveis ────────────────────────────────────────────
 
 FILTROS = [
     {
@@ -250,14 +232,11 @@ FILTROS = [
     },
 ]
 
-# Número total de filtros disponíveis
 N_FILTROS = len(FILTROS)
 
 
-# ─── Pré-visualização do filtro (sem aplicar) ────────────────────────────────
-
 def preview_filtro(img, idx):
-    """Retorna uma cópia da imagem com o filtro aplicado — para exibição prévia."""
+    """Aplica o filtro e retorna o resultado sem modificar o estado."""
     try:
         return FILTROS[idx]['funcao'](img.copy())
     except Exception as e:
@@ -266,7 +245,6 @@ def preview_filtro(img, idx):
 
 
 def descrever_filtro(idx):
-    """Imprime no console o nome, descrição e parâmetros do filtro."""
     f = FILTROS[idx]
     print(f"\n{'='*55}")
     print(f"  Filtro [{idx+1}/{N_FILTROS}]: {f['nome']}")
@@ -275,10 +253,8 @@ def descrever_filtro(idx):
     print(f"{'='*55}")
 
 
-# ─── Exibição de canal individual ────────────────────────────────────────────
-
 def exibir_canal(img, canal):
-    """Retorna imagem com apenas o canal selecionado não-zero (padrão HelloChannels.py)."""
+    """Retorna imagem com apenas o canal selecionado não-zero."""
     if canal == 'todos':
         return img
     b, g, r = cv.split(img)
