@@ -612,12 +612,16 @@ def loop_video(estado):
             _resetar(estado, img_original=None)
 
         elif tecla == ord('p'):
-            estado['img_original']   = frame.copy()
-            estado['img_trabalho']   = frame.copy()
-            estado['img_secundaria'] = _gerar_imagem_secundaria(frame)
+            captura = filtros.exibir_canal(filtros.preview_filtro(frame, idx_f), estado['canal'])
+            captura = detector.processar(captura)
+            estado['img_original']   = captura
+            estado['img_trabalho']   = captura.copy()
+            estado['img_secundaria'] = _gerar_imagem_secundaria(captura)
+            estado['idx_filtro']     = 0
             estado['posicoes_stickers'].clear()
             estado['historico'].clear()
             estado['historico_redo'].clear()
+            estado['detector'].ativo = False
             print("[Captura]: frame salvo — Modo Foto")
             cap.release()
             return 'foto'
