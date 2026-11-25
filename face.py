@@ -10,9 +10,9 @@ import os
 
 DIR        = os.path.dirname(os.path.abspath(__file__))
 DIR_HAAR   = os.path.join(DIR, 'assets', 'haarcascades')
+DIR_FACE   = os.path.join(DIR, 'assets', 'face')
 CAMINHO_FACE   = os.path.join(DIR_HAAR, 'haarcascade_frontalface_default.xml')
 CAMINHO_OLHO   = os.path.join(DIR_HAAR, 'haarcascade_eye.xml')
-CAMINHO_OCULOS = os.path.join(DIR, 'assets', 'stickers', 'eyeglasses.png')
 
 _MODOS = ['sticker', 'blur', 'pixel', 'cachorro', 'gato', 'coroa_flores']
 
@@ -57,12 +57,27 @@ class DetectorFace:
         self._cascade_face = cv.CascadeClassifier(CAMINHO_FACE)
         if os.path.exists(CAMINHO_OLHO):
             self._cascade_olho = cv.CascadeClassifier(CAMINHO_OLHO)
-        if os.path.exists(CAMINHO_OCULOS):
-            self._oculos = cv.imread(CAMINHO_OCULOS, cv.IMREAD_UNCHANGED)
-            if self._oculos is not None and self._oculos.shape[2] == 3:
-                self._oculos = cv.cvtColor(self._oculos, cv.COLOR_BGR2BGRA)
-        else:
-            print(f"[AVISO] eyeglasses.png não encontrado: {CAMINHO_OCULOS}")
+        os.makedirs(DIR_FACE, exist_ok=True)
+        self._oculos         = self._carregar_asset('oculos.png',      fallback=os.path.join(DIR, 'assets', 'stickers', 'eyeglasses.png'))
+        self._cachorro_img   = self._carregar_asset('cachorro.png')
+        self._gato_img       = self._carregar_asset('gato.png')
+        self._coroa_img      = self._carregar_asset('coroa_flores.png')
+
+    def _carregar_asset(self, nome, fallback=None):
+        caminho = os.path.join(DIR_FACE, nome)
+        if not os.path.exists(caminho):
+            if fallback and os.path.exists(fallback):
+                caminho = fallback
+            else:
+                return None
+        img = cv.imread(caminho, cv.IMREAD_UNCHANGED)
+        if img is None:
+            return None
+        if len(img.shape) == 2:
+            img = cv.cvtColor(img, cv.COLOR_GRAY2BGRA)
+        elif img.shape[2] == 3:
+            img = cv.cvtColor(img, cv.COLOR_BGR2BGRA)
+        return img
 
     def _detectar_bruta(self, gray):
         if self._cascade_face is None or self._cascade_face.empty():
@@ -120,7 +135,6 @@ class DetectorFace:
         from stickers import aplicar_sticker_alpha
         if self._oculos is None:
             return img
-        # 1/3 da altura da face é a posição usual dos olhos
         pos_y = h // 3
         h_oc = int(w * self._oculos.shape[0] / self._oculos.shape[1])
         return aplicar_sticker_alpha(img,
@@ -143,7 +157,15 @@ class DetectorFace:
         return img
 
     def _aplicar_cachorro(self, img, x, y, w, h):
-        """Orelhas floppy marrons, nariz oval, língua rosa."""
+        if self._cachorro_img is not None:
+            from stickers import aplicar_sticker_alpha
+            nova_w = int(w * 1.4)
+            nova_h = int(nova_w * self._cachorro_img.shape[0] / self._cachorro_img.shape[1])
+            overlay = cv.resize(self._cachorro_img, (nova_w, nova_h), interpolation=cv.INTER_LINEAR)
+            px = x + w // 2 - nova_w // 2
+            py = y + h - nova_h - int(h * 0.05)
+            return aplicar_sticker_alpha(img, overlay, px, py)
+        # fallback procedural
         res = img.copy()
         MARROM     = ( 40,  90, 150)
         MARROM_INT = ( 90, 130, 190)
@@ -171,7 +193,15 @@ class DetectorFace:
         return res
 
     def _aplicar_gato(self, img, x, y, w, h):
-        """Orelhas pontudas, nariz triangular, bigodes."""
+        if self._gato_img is not None:
+            from stickers import aplicar_sticker_alpha
+            nova_w = int(w * 1.4)
+            nova_h = int(nova_w * self._gato_img.shape[0] / self._gato_img.shape[1])
+            overlay = cv.resize(self._gato_img, (nova_w, nova_h), interpolation=cv.INTER_LINEAR)
+            px = x + w // 2 - nova_w // 2
+            py = y + h - nova_h + int(h * 0.1)
+            return aplicar_sticker_alpha(img, overlay, px, py)
+        # fallback procedural
         res = img.copy()
         CINZA    = (160, 160, 160)
         ROSA_INT = (160, 100, 220)
@@ -215,7 +245,15 @@ class DetectorFace:
         return res
 
     def _aplicar_coroa_flores(self, img, x, y, w, h):
-        """Flores coloridas acima da testa."""
+        if self._coroa_img is not None:
+            from stickers import aplicar_sticker_alpha
+            nova_w = int(w * 0.9)
+            nova_h = int(nova_w * self._coroa_img.shape[0] / self._coroa_img.shape[1])
+            overlay = cv.resize(self._coroa_img, (nova_w, nova_h), interpolation=cv.INTER_LINEAR)
+            px = x + w // 2 - nova_w // 2
+            py = y - nova_h + int(h * 0.25)
+            return aplicar_sticker_alpha(img, overlay, px, py)
+        # fallback procedural
         res = img.copy()
         PALETA = [
             (100, 180, 255),
