@@ -257,3 +257,227 @@ class StickerAnimado:
     def toggle(self):
         self.ativo = not self.ativo
         print(f"[Sticker animado]: {'ATIVO' if self.ativo else 'INATIVO'}")
+
+
+# ── múltiplos spritesheets posicionáveis ─────────────────────────────────────
+
+_GRADE_CONHECIDA = {
+    'pipo-nekonin022.png': (3, 4),
+    'estrelapiscante.png': (5, 4),
+    'foguinho.png':        (5, 3),
+}
+
+_ESCALA_CONHECIDA = {
+    'estrelapiscante.png': 0.525,  # 35% do tamanho padrão (redução de 65%)
+    'foguinho.png':        0.525,
+}
+
+def _detectar_grade(h, w):
+    """Escolhe (n_colunas, n_linhas) cujo frame fique mais próximo de quadrado."""
+    candidatos = [
+        (3, 4), (4, 4), (3, 3), (5, 4), (5, 3), (6, 4), (4, 6),
+        (2, 4), (4, 3), (4, 2), (2, 3), (3, 2), (1, 4), (4, 1),
+    ]
+    melhor, melhor_score = (3, 4), float('inf')
+    for n_col, n_lin in candidatos:
+        fw, fh = w / n_col, h / n_lin
+        if fw < 16 or fh < 16:
+            continue
+        score = abs(1.0 - fw / fh)
+        if score < melhor_score:
+            melhor_score, melhor = score, (n_col, n_lin)
+    return melhor
+
+
+def _limpar_artefatos(frame):
+    """Remove blobs isolados pequenos via componentes conectados no canal alpha."""
+    if frame.shape[2] < 4:
+        return frame
+    alpha = frame[:, :, 3]
+    _, mask = cv.threshold(alpha, 10, 255, cv.THRESH_BINARY)
+    n_labels, labels, stats, _ = cv.connectedComponentsWithStats(mask)
+    if n_labels <= 2:
+        return frame
+    area_max = stats[1:, cv.CC_STAT_AREA].max()
+    result = frame.copy()
+    for label in range(1, n_labels):
+        if stats[label, cv.CC_STAT_AREA] < area_max * 0.1:
+            result[labels == label, 3] = 0
+    return result
+
+
+
+def _bbox_conteudo(frame):
+    """(c0, r0, c1, r1) do conteúdo não-transparente, ou None se frame vazio."""
+    if frame.shape[2] < 4:
+        h, w = frame.shape[:2]
+        return 0, 0, w, h
+    rows = np.any(frame[:, :, 3] > 10, axis=1)
+    cols = np.any(frame[:, :, 3] > 10, axis=0)
+    if not rows.any():
+        return None
+    r0, r1 = int(np.where(rows)[0][0]), int(np.where(rows)[0][-1])
+    c0, c1 = int(np.where(cols)[0][0]), int(np.where(cols)[0][-1])
+    return c0, r0, c1 + 1, r1 + 1
+
+
+class GerenciadorSpritesAnimados:
+    """Múltiplos spritesheets animados com instâncias posicionáveis (como stickers normais)."""
+
+    def __init__(self, fps=8, escala=1.5):
+        self._fps    = fps
+        self._escala = escala
+        self._sprites  = []   # [{nome, frames, idx_frame, ultimo_tempo}]
+        self._idx      = 0
+        self._posicoes = []   # [{x, y, idx}]
+        self._carregar_todos()
+
+    # ── carregamento ──────────────────────────────────────────────────────────
+
+    def _carregar_todos(self):
+        exts = ('.png', '.jpg', '.jpeg', '.bmp')
+        if not os.path.isdir(DIR_SPRITE):
+            return
+        for arq in sorted(os.listdir(DIR_SPRITE)):
+            if not arq.lower().endswith(exts):
+                continue
+            frames = self._carregar_spritesheet(os.path.join(DIR_SPRITE, arq))
+            if not frames:
+                continue
+            nome = os.path.splitext(arq)[0].replace('_', ' ').replace('-', ' ').title()
+            self._sprites.append({'nome': nome, 'frames': frames,
+                                   'idx_frame': 0, 'ultimo_tempo': time.time()})
+        if self._sprites:
+            print(f"[Spritesheets]: {len(self._sprites)} carregados")
+            for i, s in enumerate(self._sprites):
+                print(f"  [{i+1}] {s['nome']} ({len(s['frames'])} frames)")
+        else:
+            print("[AVISO] Nenhum spritesheet encontrado em assets/spritesheet/")
+
+    def _carregar_spritesheet(self, caminho):
+        sheet = cv.imread(caminho, cv.IMREAD_UNCHANGED)
+        if sheet is None:
+            return []
+        if len(sheet.shape) == 2:
+            sheet = cv.cvtColor(sheet, cv.COLOR_GRAY2BGRA)
+        elif sheet.shape[2] == 3:
+            sheet = cv.cvtColor(sheet, cv.COLOR_BGR2BGRA)
+        h, w = sheet.shape[:2]
+        nome_base = os.path.basename(caminho)
+        if nome_base in _GRADE_CONHECIDA:
+            n_col, n_lin = _GRADE_CONHECIDA[nome_base]
+        else:
+            n_col, n_lin = _detectar_grade(h, w)
+        escala = _ESCALA_CONHECIDA.get(nome_base, self._escala)
+        interp = cv.INTER_AREA if escala < 1.0 else cv.INTER_NEAREST
+        INS = 2
+        x_bounds = [round(c * w / n_col) for c in range(n_col + 1)]
+        y_bounds = [round(r * h / n_lin) for r in range(n_lin + 1)]
+
+        # 1ª passagem: extrair frames e remover artefatos isolados
+        frames_brutos = []
+        for lin in range(n_lin):
+            y0 = y_bounds[lin] + INS
+            y1 = max(y0 + 1, y_bounds[lin + 1] - INS)
+            for col in range(n_col):
+                x0 = x_bounds[col] + INS
+                x1 = max(x0 + 1, x_bounds[col + 1] - INS)
+                frames_brutos.append(_limpar_artefatos(sheet[y0:y1, x0:x1].copy()))
+
+        # 2ª passagem: centralizar pelo conteúdo (union bbox de todos os frames)
+        bboxes = [_bbox_conteudo(f) for f in frames_brutos]
+        bboxes_v = [b for b in bboxes if b is not None]
+        if bboxes_v:
+            PAD = 2
+            ux0 = max(0, min(b[0] for b in bboxes_v) - PAD)
+            uy0 = max(0, min(b[1] for b in bboxes_v) - PAD)
+            ux1 = max(b[2] for b in bboxes_v) + PAD
+            uy1 = max(b[3] for b in bboxes_v) + PAD
+        else:
+            ux0, uy0 = 0, 0
+            ux1 = frames_brutos[0].shape[1] if frames_brutos else 1
+            uy1 = frames_brutos[0].shape[0] if frames_brutos else 1
+
+        nw_base = max(1, int((ux1 - ux0) * escala))
+        nh_base = max(1, int((uy1 - uy0) * escala))
+
+        frames = []
+        for f in frames_brutos:
+            fh, fw = f.shape[:2]
+            cropped = f[uy0:min(uy1, fh), ux0:min(ux1, fw)]
+            if cropped.size == 0:
+                frames.append(np.zeros((nh_base, nw_base, 4), dtype=np.uint8))
+            else:
+                frames.append(cv.resize(cropped, (nw_base, nh_base), interpolation=interp))
+        return frames
+
+    # ── propriedades ──────────────────────────────────────────────────────────
+
+    @property
+    def n_sprites(self):
+        return len(self._sprites)
+
+    @property
+    def idx_atual(self):
+        return self._idx
+
+    @property
+    def nome_atual(self):
+        return self._sprites[self._idx]['nome'] if self._sprites else '(nenhum)'
+
+    @property
+    def posicoes(self):
+        return self._posicoes
+
+    # ── controle ──────────────────────────────────────────────────────────────
+
+    def proximo(self):
+        if self._sprites:
+            self._idx = (self._idx + 1) % self.n_sprites
+            print(f"[Anim]: {self.nome_atual} [{self._idx+1}/{self.n_sprites}]")
+
+    def anterior(self):
+        if self._sprites:
+            self._idx = (self._idx - 1) % self.n_sprites
+            print(f"[Anim]: {self.nome_atual} [{self._idx+1}/{self.n_sprites}]")
+
+    def colocar(self, x, y):
+        if self._sprites:
+            self._posicoes.append({'x': x, 'y': y, 'idx': self._idx})
+            print(f"[Anim colocado]: {self.nome_atual} em ({x}, {y})")
+
+    def resetar(self):
+        self._posicoes.clear()
+        self._idx = 0
+        for s in self._sprites:
+            s['idx_frame'] = 0
+
+    def get_posicoes_snapshot(self):
+        return list(self._posicoes)
+
+    def set_posicoes_snapshot(self, snap):
+        self._posicoes.clear()
+        self._posicoes.extend(snap)
+
+    # ── renderização ──────────────────────────────────────────────────────────
+
+    def desenhar(self, fundo):
+        if not self._posicoes:
+            return fundo
+        agora = time.time()
+        ativos = {pos['idx'] for pos in self._posicoes}
+        for i, spr in enumerate(self._sprites):
+            if i not in ativos:
+                continue
+            if agora - spr['ultimo_tempo'] >= 1.0 / self._fps:
+                spr['idx_frame'] = (spr['idx_frame'] + 1) % len(spr['frames'])
+                spr['ultimo_tempo'] = agora
+        resultado = fundo
+        for pos in self._posicoes:
+            spr   = self._sprites[pos['idx']]
+            frame = spr['frames'][spr['idx_frame']]
+            h_f, w_f = frame.shape[:2]
+            resultado = aplicar_sticker_alpha(resultado, frame,
+                                              pos['x'] - w_f // 2,
+                                              pos['y'] - h_f // 2)
+        return resultado

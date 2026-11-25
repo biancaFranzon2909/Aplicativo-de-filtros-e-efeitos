@@ -83,6 +83,7 @@ def _salvar_historia(estado):
     snapshot = {
         'img':      estado['img_trabalho'].copy(),
         'stickers': list(estado['posicoes_stickers']),
+        'anim':     estado['gerenciador_anim'].get_posicoes_snapshot(),
     }
     estado['historico'].append(snapshot)
     estado['historico_redo'].clear()
@@ -94,11 +95,13 @@ def _desfazer(estado):
     estado['historico_redo'].append({
         'img':      estado['img_trabalho'].copy(),
         'stickers': list(estado['posicoes_stickers']),
+        'anim':     estado['gerenciador_anim'].get_posicoes_snapshot(),
     })
     snapshot = estado['historico'].pop()
     estado['img_trabalho'] = snapshot['img'].copy()
     estado['posicoes_stickers'].clear()
     estado['posicoes_stickers'].extend(snapshot['stickers'])
+    estado['gerenciador_anim'].set_posicoes_snapshot(snapshot['anim'])
     print(f"[Desfazer]: OK  ({len(estado['historico'])} passo(s) no histórico)")
 
 def _refazer(estado):
@@ -108,11 +111,13 @@ def _refazer(estado):
     estado['historico'].append({
         'img':      estado['img_trabalho'].copy(),
         'stickers': list(estado['posicoes_stickers']),
+        'anim':     estado['gerenciador_anim'].get_posicoes_snapshot(),
     })
     snapshot = estado['historico_redo'].pop()
     estado['img_trabalho'] = snapshot['img'].copy()
     estado['posicoes_stickers'].clear()
     estado['posicoes_stickers'].extend(snapshot['stickers'])
+    estado['gerenciador_anim'].set_posicoes_snapshot(snapshot['anim'])
     print("[Refazer]: OK")
 
 def _resetar(estado, img_original):
@@ -124,8 +129,8 @@ def _resetar(estado, img_original):
     estado['historico_redo'].clear()
     estado['canal']      = 'todos'
     estado['idx_filtro'] = 0
-    estado['sprite'].ativo   = False
-    estado['sprite'].posicao = None
+    estado['gerenciador_anim'].resetar()
+    estado['modo_sprite'] = False
     estado['detector'].ativo = False
     print("[Resetar]: filtros, stickers e efeitos removidos")
 
@@ -246,6 +251,7 @@ def _menu_inicial():
     splash = _gerar_splash(lista_imagens)
     while not evento.is_set():
         cv.imshow(NOME_JANELA, splash)
+        filtros.tick_controles()
         tecla = cv.waitKey(30) & 0xFF
 
         if tecla in (ord('q'), ord('Q'), 27):
@@ -301,13 +307,18 @@ def _desenhar_hud(img, estado):
     nome_s = stks[idx_s]['nome'] if stks else '(nenhum)'
     det    = estado['detector']
     face_info = face_mod._NOME_CURTO.get(det.modo, det.modo) if det.ativo else 'OFF'
-    anim_info = 'ON' if estado['sprite'].ativo else 'OFF'
     n_hist = len(estado['historico'])
+    ger    = estado['gerenciador_anim']
+    modo_sprite = estado['modo_sprite']
+
+    seta_stat = '  << clique' if not modo_sprite else ''
+    seta_anim = '  << clique' if modo_sprite else ''
 
     linhas = [
-        f"[{modo}]  Canal:{canal}  Face:{face_info}  Anim:{anim_info}  Hist:{n_hist}",
+        f"[{modo}]  Canal:{canal}  Face:{face_info}  Hist:{n_hist}",
         f"Filtro [{idx_f+1}/{n_f}]: {nome_f}",
-        f"Sticker [{idx_s+1}/{len(stks) if stks else 0}]: {nome_s}  (clique p/ colocar)",
+        f"Sticker [{idx_s+1}/{len(stks) if stks else 0}]: {nome_s}{seta_stat}",
+        f"Anim [{ger.idx_atual+1}/{ger.n_sprites if ger.n_sprites else 1}]: {ger.nome_atual}{seta_anim}",
     ]
 
     h_hud = len(linhas) * 24 + 8
@@ -336,11 +347,11 @@ def imprimir_menu():
 ║  [3]  Operação: Blending 50/50   [4] Diferença Abs.  ║
 ╠══════════════════════════════════════════════════════╣
 ║  [S / s]   Próximo / Anterior sticker                ║
-║  [clique]  Colocar sticker (Modo Foto)               ║
+║  [Z / z]   Próximo / Anterior sticker animado        ║
+║  [clique]  Colocar sticker ou animado (modo atual)   ║
 ║  [D]        Detecção de face — toggle                ║
 ║  [E]        Modo face (ciclar 6 opções):             ║
 ║             oculos/blur/pixel/cachorro/gato/flores   ║
-║  [Z]        Sticker animado — toggle                 ║
 ╠══════════════════════════════════════════════════════╣
 ║  [V]  Trocar modo (Foto ↔ Vídeo)                     ║
 ║  [G]  Gravar / Salvar imagem                         ║
@@ -352,9 +363,11 @@ def imprimir_menu():
 
 
 _ultimo_clique = None
+_posicao_mouse = (0, 0)
 
 def _mouse_callback(event, x, y, flags, param):
-    global _ultimo_clique
+    global _ultimo_clique, _posicao_mouse
+    _posicao_mouse = (x, y)
     if event == cv.EVENT_LBUTTONDOWN:
         _ultimo_clique = (x, y)
 
@@ -369,11 +382,13 @@ def loop_foto(estado):
     stickers_lista    = estado['stickers_lista']
     posicoes_stickers = estado['posicoes_stickers']
     detector          = estado['detector']
-    sprite            = estado['sprite']
+    ger               = estado['gerenciador_anim']
 
     cv.namedWindow(NOME_JANELA)
     cv.setMouseCallback(NOME_JANELA, _mouse_callback)
     print("\n[Modo FOTO] Pronto. Pressione [M] para ver os controles.")
+
+    _HUD_H = 4 * 24 + 8  # 4 linhas de HUD
 
     while True:
         idx_f = estado['idx_filtro']
@@ -383,18 +398,19 @@ def loop_foto(estado):
         display = filtros.exibir_canal(preview, estado['canal'])
         display = stickers.aplicar_lista_stickers(display, posicoes_stickers,
                                                   stickers_lista, estado['idx_sticker'])
-        display = sprite.desenhar(display)
+        display = ger.desenhar(display)
         display = detector.processar(display)
         display = _desenhar_hud(display, estado)
         cv.imshow(NOME_JANELA, display)
+        filtros.tick_controles()
 
         if _ultimo_clique is not None:
             cx, cy = _ultimo_clique
             _ultimo_clique = None
-            cy_real = max(0, cy - (3 * 24 + 8))   # desconta altura do HUD
-            if sprite.ativo:
-                sprite.definir_posicao(cx, cy_real)
-                print(f"[Sticker animado] Reposicionado para ({cx}, {cy_real})")
+            cy_real = max(0, cy - _HUD_H)
+            if estado['modo_sprite'] and ger.n_sprites > 0:
+                _salvar_historia(estado)
+                ger.colocar(cx, cy_real)
             elif stickers_lista:
                 _salvar_historia(estado)
                 posicoes_stickers.append({'x': cx, 'y': cy_real, 'idx': estado['idx_sticker']})
@@ -450,11 +466,13 @@ def loop_foto(estado):
         elif tecla == ord('S'):
             if stickers_lista:
                 estado['idx_sticker'] = (estado['idx_sticker'] + 1) % len(stickers_lista)
+                estado['modo_sprite'] = False
                 print(f"[Sticker]: {stickers_lista[estado['idx_sticker']]['nome']}")
 
         elif tecla == ord('s'):
             if stickers_lista:
                 estado['idx_sticker'] = (estado['idx_sticker'] - 1) % len(stickers_lista)
+                estado['modo_sprite'] = False
                 print(f"[Sticker]: {stickers_lista[estado['idx_sticker']]['nome']}")
 
         elif tecla == ord('d'):
@@ -463,11 +481,13 @@ def loop_foto(estado):
         elif tecla == ord('e'):
             detector.trocar_modo()
 
+        elif tecla == ord('Z'):
+            ger.proximo()
+            estado['modo_sprite'] = True
+
         elif tecla == ord('z'):
-            sprite.toggle()
-            if sprite.ativo and sprite.posicao is None:
-                h, w = img_trabalho.shape[:2]
-                sprite.definir_posicao(w // 2, h // 2)
+            ger.anterior()
+            estado['modo_sprite'] = True
 
         elif tecla == ord('g'):
             _salvar(display)
@@ -482,6 +502,7 @@ def loop_foto(estado):
 
 def loop_video(estado):
     """Loop principal do Modo Vídeo. Retorna: 'sair' | 'foto'"""
+    global _ultimo_clique
     cap = cv.VideoCapture(0)
     if not cap.isOpened():
         print("[AVISO] Webcam não encontrada. Tentando vídeo de fallback...")
@@ -492,11 +513,13 @@ def loop_video(estado):
         return 'foto'
 
     cv.namedWindow(NOME_JANELA)
-    cv.setMouseCallback(NOME_JANELA, lambda *a: None)
+    cv.setMouseCallback(NOME_JANELA, _mouse_callback)
     print("\n[Modo VÍDEO] Pronto. Pressione [M] para ver os controles.")
 
     detector = estado['detector']
-    sprite   = estado['sprite']
+    ger      = estado['gerenciador_anim']
+
+    _HUD_H = 4 * 24 + 8  # 4 linhas de HUD
 
     while True:
         ret, frame = cap.read()
@@ -504,14 +527,26 @@ def loop_video(estado):
             cap.set(cv.CAP_PROP_POS_FRAMES, 0)
             continue
 
-        frame  = _redimensionar_se_grande(frame)
+        frame  = cv.flip(_redimensionar_se_grande(frame), 1)
         idx_f  = estado['idx_filtro']
 
         display = filtros.exibir_canal(filtros.preview_filtro(frame, idx_f), estado['canal'])
-        display = sprite.desenhar(display)
+        display = ger.desenhar(display)
         display = detector.processar(display)
         display = _desenhar_hud(display, estado)
         cv.imshow(NOME_JANELA, display)
+        filtros.tick_controles()
+
+        if _ultimo_clique is not None:
+            cx, cy = _ultimo_clique
+            _ultimo_clique = None
+            cy_real = max(0, cy - _HUD_H)
+            stickers_lista = estado['stickers_lista']
+            if estado['modo_sprite'] and ger.n_sprites > 0:
+                ger.colocar(cx, cy_real)
+            elif stickers_lista:
+                nome_s = stickers_lista[estado['idx_sticker']]['nome']
+                print(f"[Sticker colocado em vídeo]: {nome_s} em ({cx}, {cy_real})")
 
         tecla = cv.waitKey(1) & 0xFF
 
@@ -540,16 +575,33 @@ def loop_video(estado):
             estado['canal'] = canais[(canais.index(estado['canal']) + 1) % len(canais)]
             print(f"[Canal]: {estado['canal']}")
 
+        elif tecla == ord('S'):
+            stickers_lista = estado['stickers_lista']
+            if stickers_lista:
+                estado['idx_sticker'] = (estado['idx_sticker'] + 1) % len(stickers_lista)
+                estado['modo_sprite'] = False
+                print(f"[Sticker]: {stickers_lista[estado['idx_sticker']]['nome']}")
+
+        elif tecla == ord('s'):
+            stickers_lista = estado['stickers_lista']
+            if stickers_lista:
+                estado['idx_sticker'] = (estado['idx_sticker'] - 1) % len(stickers_lista)
+                estado['modo_sprite'] = False
+                print(f"[Sticker]: {stickers_lista[estado['idx_sticker']]['nome']}")
+
         elif tecla == ord('d'):
             detector.toggle_ativo()
 
         elif tecla == ord('e'):
             detector.trocar_modo()
 
+        elif tecla == ord('Z'):
+            ger.proximo()
+            estado['modo_sprite'] = True
+
         elif tecla == ord('z'):
-            sprite.toggle()
-            if sprite.ativo and sprite.posicao is None:
-                sprite.definir_posicao(display.shape[1] // 2, display.shape[0] // 2)
+            ger.anterior()
+            estado['modo_sprite'] = True
 
         elif tecla == ord('g'):
             _salvar(display)
@@ -568,7 +620,7 @@ def _carregar_estado_inicial():
         print(f"  [{i+1}] {s['nome']}")
 
     detector = face_mod.DetectorFace()
-    sprite   = stickers.StickerAnimado()
+    gerenciador_anim = stickers.GerenciadorSpritesAnimados()
 
     img, img2, modo_inicial = _menu_inicial()
 
@@ -588,7 +640,8 @@ def _carregar_estado_inicial():
         'historico':         [],
         'historico_redo':    [],
         'detector':          detector,
-        'sprite':            sprite,
+        'gerenciador_anim':  gerenciador_anim,
+        'modo_sprite':       False,
     }
 
 
@@ -598,8 +651,10 @@ def main():
     print("  Stories Filter App — Python + OpenCV")
     print("=" * 56)
 
-    filtros.criar_janela_controles()
     cv.namedWindow(NOME_JANELA)
+    filtros.criar_janela_controles()
+    cv.moveWindow(NOME_JANELA, 0, 0)
+    cv.moveWindow(filtros.NOME_JANELA_CONTROLES, LARGURA_MAX + 10, 0)
 
     estado = _carregar_estado_inicial()
     if estado['modo'] == 'sair':

@@ -23,30 +23,32 @@ def _kernel_impar(val, minimo=3):
 
 
 def criar_janela_controles():
-    cv.namedWindow(NOME_JANELA_CONTROLES)
-    # Kernel: 1-20 → kernel real = val*2+1 (3 a 41)
-    cv.createTrackbar('Kernel',    NOME_JANELA_CONTROLES,  1, 20, _nada)
-    # Sigma: 0-30 → sigma real = val/10 (0.0 a 3.0)
-    cv.createTrackbar('Sigma',     NOME_JANELA_CONTROLES, 10, 30, _nada)
-    cv.createTrackbar('Limiar1',   NOME_JANELA_CONTROLES, 50, 255, _nada)
-    cv.createTrackbar('Limiar2',   NOME_JANELA_CONTROLES, 150, 255, _nada)
-    # Brilho: 50 = neutro → beta = (val-50)*2
-    cv.createTrackbar('Brilho',    NOME_JANELA_CONTROLES, 50, 100, _nada)
-    # Contraste: val/10 → 0.1 a 3.0
-    cv.createTrackbar('Contraste', NOME_JANELA_CONTROLES, 10, 30, _nada)
+    cv.namedWindow(NOME_JANELA_CONTROLES, cv.WINDOW_AUTOSIZE)
+    cv.createTrackbar('K',   NOME_JANELA_CONTROLES,  1, 10, _nada)
+    cv.createTrackbar('Sig', NOME_JANELA_CONTROLES,  5, 10, _nada)
+    cv.createTrackbar('L1',  NOME_JANELA_CONTROLES,  3, 10, _nada)
+    cv.createTrackbar('L2',  NOME_JANELA_CONTROLES,  8, 10, _nada)
+    cv.createTrackbar('Bri', NOME_JANELA_CONTROLES,  5, 10, _nada)
+    cv.createTrackbar('Ctr', NOME_JANELA_CONTROLES,  5, 10, _nada)
+    cv.imshow(NOME_JANELA_CONTROLES, np.zeros((1, 180, 3), dtype=np.uint8))
+
+
+def tick_controles():
+    """Chame uma vez por frame para manter os eventos de trackbar ativos."""
+    cv.imshow(NOME_JANELA_CONTROLES, np.zeros((1, 180, 3), dtype=np.uint8))
 
 
 def aplicar_blur(img):
-    k = _kernel_impar(_get_tb('Kernel', 1) * 2 + 1)
+    k = _kernel_impar(_get_tb('K', 1) * 2 + 1)
     return cv.blur(img, (k, k))
 
 def aplicar_gaussian(img):
-    k = _kernel_impar(_get_tb('Kernel', 1) * 2 + 1)
-    sigma = _get_tb('Sigma', 10) / 10.0
+    k = _kernel_impar(_get_tb('K', 1) * 2 + 1)
+    sigma = _get_tb('Sig', 5) / 5.0
     return cv.GaussianBlur(img, (k, k), sigma)
 
 def aplicar_mediana(img):
-    k = _kernel_impar(_get_tb('Kernel', 1) * 2 + 1)
+    k = _kernel_impar(_get_tb('K', 1) * 2 + 1)
     return cv.medianBlur(img, k)
 
 def aplicar_sharpen(img):
@@ -69,8 +71,8 @@ def aplicar_sobel(img):
     return cv.cvtColor(magnitude, cv.COLOR_GRAY2BGR) if len(img.shape) == 3 else magnitude
 
 def aplicar_canny(img):
-    t1 = _get_tb('Limiar1', 50)
-    t2 = _get_tb('Limiar2', 150)
+    t1 = _get_tb('L1', 3) * 20
+    t2 = _get_tb('L2', 8) * 20
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     bordas = cv.Canny(gray, t1, t2)
     return cv.cvtColor(bordas, cv.COLOR_GRAY2BGR) if len(img.shape) == 3 else bordas
@@ -101,28 +103,28 @@ def aplicar_sepia(img):
     return cv.merge([novo_b, novo_g, novo_r]).astype(np.uint8)
 
 def aplicar_brilho_contraste(img):
-    brilho = (_get_tb('Brilho', 50) - 50) * 2    # -100 a +100
-    contraste = _get_tb('Contraste', 10) / 10.0   # 0.1 a 3.0
+    brilho    = (_get_tb('Bri', 5) - 5) * 20     # -100 a +100
+    contraste = (_get_tb('Ctr', 5) + 5) / 10.0   # 0.5 a 1.5
     return cv.convertScaleAbs(img, alpha=contraste, beta=brilho)
 
 def aplicar_limiarizacao(img):
-    t1 = _get_tb('Limiar1', 127)
+    t1 = _get_tb('L1', 3) * 20
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     _, thresh = cv.threshold(gray, t1, 255, cv.THRESH_BINARY)
     return cv.cvtColor(thresh, cv.COLOR_GRAY2BGR) if len(img.shape) == 3 else thresh
 
 def aplicar_dilatacao(img):
-    k = _kernel_impar(_get_tb('Kernel', 1) * 2 + 1)
+    k = _kernel_impar(_get_tb('K', 1) * 2 + 1)
     elemento = np.ones((k, k), np.uint8)
     return cv.dilate(img, elemento, iterations=1)
 
 def aplicar_erosao(img):
-    k = _kernel_impar(_get_tb('Kernel', 1) * 2 + 1)
+    k = _kernel_impar(_get_tb('K', 1) * 2 + 1)
     elemento = np.ones((k, k), np.uint8)
     return cv.erode(img, elemento, iterations=1)
 
 def aplicar_posterizacao(img):
-    niveis = max(2, _get_tb('Limiar1', 64) // 32 + 2)  # 2-9 níveis
+    niveis = max(2, _get_tb('L1', 3) * 20 // 32 + 2)  # 2-8 níveis
     fator = 256.0 / niveis
     return np.clip((img // fator) * fator, 0, 255).astype(np.uint8)
 
@@ -203,13 +205,13 @@ FILTROS = [
     {
         'nome':       'Brilho e Contraste',
         'descricao':  'Ajusta brilho (deslocamento aditivo nos pixels) e contraste (escala multiplicativa).',
-        'parametros': 'Trackbars [Brilho] (0=escuro / 50=neutro / 100=claro) e [Contraste] (0.1 a 3.0)',
+        'parametros': 'Trackbars [Brilho] (0=escuro / 10=neutro / 20=claro) e [Contraste] (0.1 a 3.0)',
         'funcao':     aplicar_brilho_contraste,
     },
     {
         'nome':       'Limiarização',
         'descricao':  'Binariza a imagem: pixels acima do limiar ficam brancos, abaixo ficam pretos.',
-        'parametros': 'Trackbar [Limiar1]: valor do limiar (0-255)',
+        'parametros': 'Trackbar [Limiar1]: valor do limiar efetivo (0-250, passo 10)',
         'funcao':     aplicar_limiarizacao,
     },
     {
