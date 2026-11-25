@@ -124,8 +124,8 @@ def garantir_stickers():
 
 # ─── Carregamento dos stickers ────────────────────────────────────────────────
 
-def carregar_stickers():
-    """Carrega todos os PNGs com alpha da pasta assets/stickers/."""
+def carregar_stickers(tamanho_max=90):
+    """Carrega todos os PNGs com alpha da pasta assets/stickers/ e padroniza o tamanho."""
     garantir_stickers()
     stickers = []
     for arquivo in sorted(os.listdir(DIR_STICKERS)):
@@ -134,8 +134,18 @@ def carregar_stickers():
             img = cv.imread(caminho, cv.IMREAD_UNCHANGED)
             if img is not None:
                 # Garante 4 canais (BGRA)
-                if img.shape[2] == 3:
+                if len(img.shape) == 2:
+                    img = cv.cvtColor(img, cv.COLOR_GRAY2BGRA)
+                elif img.shape[2] == 3:
                     img = cv.cvtColor(img, cv.COLOR_BGR2BGRA)
+
+                # Redimensiona proporcionalmente para caber em tamanho_max
+                h, w = img.shape[:2]
+                escala = tamanho_max / max(h, w)
+                novo_w = max(1, int(w * escala))
+                novo_h = max(1, int(h * escala))
+                img = cv.resize(img, (novo_w, novo_h), interpolation=cv.INTER_AREA)
+
                 nome = os.path.splitext(arquivo)[0].replace('_', ' ').title()
                 stickers.append({'nome': nome, 'imagem': img})
     if not stickers:
