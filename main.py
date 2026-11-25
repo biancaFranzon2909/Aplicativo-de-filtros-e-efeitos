@@ -533,6 +533,8 @@ def loop_video(estado):
         idx_f  = estado['idx_filtro']
 
         display = filtros.exibir_canal(filtros.preview_filtro(frame, idx_f), estado['canal'])
+        display = stickers.aplicar_lista_stickers(display, estado['posicoes_stickers'],
+                                                  estado['stickers_lista'], estado['idx_sticker'])
         display = ger.desenhar(display)
         display = detector.processar(display)
         display = _desenhar_hud(display, estado)
@@ -547,8 +549,9 @@ def loop_video(estado):
             if estado['modo_sprite'] and ger.n_sprites > 0:
                 ger.colocar(cx, cy_real)
             elif stickers_lista:
+                estado['posicoes_stickers'].append({'x': cx, 'y': cy_real, 'idx': estado['idx_sticker']})
                 nome_s = stickers_lista[estado['idx_sticker']]['nome']
-                print(f"[Sticker colocado em vídeo]: {nome_s} em ({cx}, {cy_real})")
+                print(f"[Sticker colocado]: {nome_s} em ({cx}, {cy_real})")
 
         tecla = cv.waitKey(1) & 0xFF
 
@@ -618,7 +621,6 @@ def loop_video(estado):
             estado['img_trabalho']   = captura.copy()
             estado['img_secundaria'] = _gerar_imagem_secundaria(captura)
             estado['idx_filtro']     = 0
-            estado['posicoes_stickers'].clear()
             estado['historico'].clear()
             estado['historico_redo'].clear()
             estado['detector'].ativo = False
