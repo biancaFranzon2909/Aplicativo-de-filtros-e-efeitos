@@ -11,7 +11,8 @@ Controles:
   [C]        Trocar canal de exibição (Todos → R → G → B → Todos)
   [1-4]      Aplicar operação aritmética com imagem secundária
   [S / s]    Próximo / Anterior sticker
-  [clique]   Colocar sticker na posição do mouse (Modo Foto)
+  [clique]   Colocar sticker na posição do mouse
+  [P]        Capturar frame atual e ir para Modo Foto (Modo Vídeo)
   [D]        Detectar faces — toggle
   [E]        Trocar modo de face (óculos → blur → pixel → …)
   [Z]        Sticker animado — toggle
@@ -354,6 +355,7 @@ def imprimir_menu():
 ║             oculos/blur/pixel/cachorro/gato/flores   ║
 ╠══════════════════════════════════════════════════════╣
 ║  [V]  Trocar modo (Foto ↔ Vídeo)                     ║
+║  [P]  Capturar frame → Modo Foto  (só no Vídeo)      ║
 ║  [G]  Gravar / Salvar imagem                         ║
 ║  [R]  Resetar (remove tudo — Foto e Vídeo)           ║
 ║  [M]  Mostrar este menu                              ║
@@ -608,6 +610,17 @@ def loop_video(estado):
 
         elif tecla == ord('r'):
             _resetar(estado, img_original=None)
+
+        elif tecla == ord('p'):
+            estado['img_original']   = frame.copy()
+            estado['img_trabalho']   = frame.copy()
+            estado['img_secundaria'] = _gerar_imagem_secundaria(frame)
+            estado['posicoes_stickers'].clear()
+            estado['historico'].clear()
+            estado['historico_redo'].clear()
+            print("[Captura]: frame salvo — Modo Foto")
+            cap.release()
+            return 'foto'
 
     cap.release()
     return 'sair'
