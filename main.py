@@ -2,7 +2,6 @@
 main.py — Aplicativo de edição de imagem/vídeo estilo stories do Instagram.
 
 Trabalho Grau B — Processamento Gráfico: Fundamentos (Unisinos 2026/2)
-Professora: Rossana Baptista Queiroz
 
 Controles:
   [F / f]   Próximo / Anterior filtro (pré-visualização em tempo real)
@@ -35,8 +34,6 @@ import operacoes
 import stickers
 import face as face_mod
 
-# ─── Caminhos ─────────────────────────────────────────────────────────────────
-
 DIR        = os.path.dirname(os.path.abspath(__file__))
 DIR_ASSETS = os.path.join(DIR, 'assets', 'imagens')
 DIR_SAIDA  = os.path.join(DIR, 'outputs')
@@ -47,7 +44,6 @@ NOME_JANELA = 'Processamento Grafico - Grau B'
 LARGURA_MAX = 900
 ALTURA_MAX  = 700
 
-# ─── Utilitários de imagem ────────────────────────────────────────────────────
 
 def _redimensionar_se_grande(img):
     h, w = img.shape[:2]
@@ -63,10 +59,9 @@ def _carregar_imagem(caminho):
     return _redimensionar_se_grande(img)
 
 def _gerar_imagem_secundaria(referencia):
-    """Cria imagem de teste colorida (gradiente azul→verde + quadrado vermelho)."""
+    """Cria imagem de teste colorida (gradiente + quadrado central)."""
     h, w = referencia.shape[:2]
     img = np.zeros((h, w, 3), dtype=np.uint8)
-    # Gradiente vetorizado (evita loop Python)
     img[:, :, 0] = np.tile(np.linspace(255, 0, w, dtype=np.uint8), (h, 1))
     img[:, :, 1] = np.tile(np.linspace(0, 255, w, dtype=np.uint8), (h, 1))
     cx, cy, rw, rh = w // 2, h // 2, w // 4, h // 4
@@ -83,26 +78,19 @@ def _salvar(img):
     print(f"[Salvo]: {caminho}")
 
 
-# ─── Histórico (undo/redo) ────────────────────────────────────────────────────
-
 def _salvar_historia(estado):
-    """
-    Salva snapshot de img_trabalho + posicoes_stickers antes de qualquer ação.
-    Limpa o histórico de redo sempre que uma nova ação é feita.
-    """
+    """Salva snapshot de img_trabalho + stickers antes de cada ação destrutiva."""
     snapshot = {
         'img':      estado['img_trabalho'].copy(),
-        'stickers': list(estado['posicoes_stickers']),   # cópia rasa (dicts não são mutados)
+        'stickers': list(estado['posicoes_stickers']),
     }
     estado['historico'].append(snapshot)
     estado['historico_redo'].clear()
 
 def _desfazer(estado):
-    """Desfaz a última ação (filtro, sticker, operação aritmética)."""
     if not estado['historico']:
         print("[Desfazer]: nada para desfazer")
         return
-    # Salva estado atual no redo antes de desfazer
     estado['historico_redo'].append({
         'img':      estado['img_trabalho'].copy(),
         'stickers': list(estado['posicoes_stickers']),
@@ -111,11 +99,9 @@ def _desfazer(estado):
     estado['img_trabalho'] = snapshot['img'].copy()
     estado['posicoes_stickers'].clear()
     estado['posicoes_stickers'].extend(snapshot['stickers'])
-    n_restantes = len(estado['historico'])
-    print(f"[Desfazer]: OK  ({n_restantes} passo(s) no histórico)")
+    print(f"[Desfazer]: OK  ({len(estado['historico'])} passo(s) no histórico)")
 
 def _refazer(estado):
-    """Refaz a última ação desfeita."""
     if not estado['historico_redo']:
         print("[Refazer]: nada para refazer")
         return
@@ -130,13 +116,7 @@ def _refazer(estado):
     print("[Refazer]: OK")
 
 def _resetar(estado, img_original):
-    """
-    Reseta para o estado inicial:
-    - Restaura img_original (ou só limpa filtros/stickers em vídeo)
-    - Limpa todos os stickers e histórico
-    - Desativa sprite e detector
-    - Reset canal e filtro
-    """
+    """Volta ao estado inicial: restaura imagem, limpa stickers, desativa efeitos."""
     if img_original is not None:
         estado['img_trabalho'] = img_original.copy()
     estado['posicoes_stickers'].clear()
@@ -150,23 +130,20 @@ def _resetar(estado, img_original):
     print("[Resetar]: filtros, stickers e efeitos removidos")
 
 
-# ─── Splash screen e menu inicial ────────────────────────────────────────────
-
 def _gerar_splash(lista_imagens=None):
-    """Gera imagem de boas-vindas com gradiente estilo Instagram."""
+    """Gera tela de boas-vindas com gradiente roxo→laranja."""
     if lista_imagens is None:
         lista_imagens = []
     h, w = 500, 700
     img = np.zeros((h, w, 3), dtype=np.uint8)
 
-    # Gradiente vertical roxo → laranja (BGR)
+    # gradiente vertical roxo → laranja (BGR)
     y_arr = np.arange(h, dtype=np.float32).reshape(-1, 1)
     t = y_arr / h
-    img[:, :, 0] = np.clip(200 * (1-t) + 50 * t,  0, 255).astype(np.uint8)  # B: 200→50
-    img[:, :, 1] = np.clip(0   * (1-t) + 120 * t, 0, 255).astype(np.uint8)  # G: 0→120
-    img[:, :, 2] = np.clip(130 * (1-t) + 255 * t, 0, 255).astype(np.uint8)  # R: 130→255
+    img[:, :, 0] = np.clip(200 * (1-t) + 50 * t,  0, 255).astype(np.uint8)
+    img[:, :, 1] = np.clip(0   * (1-t) + 120 * t, 0, 255).astype(np.uint8)
+    img[:, :, 2] = np.clip(130 * (1-t) + 255 * t, 0, 255).astype(np.uint8)
 
-    # Título
     cv.putText(img, 'Stories Filter App', (55, 78),
                cv.FONT_HERSHEY_SIMPLEX, 1.6, (255, 255, 255), 3, cv.LINE_AA)
     cv.putText(img, 'Processamento Grafico: Fundamentos  |  Unisinos 2026/2', (22, 112),
@@ -176,7 +153,6 @@ def _gerar_splash(lista_imagens=None):
     cv.putText(img, 'Pressione uma tecla nesta janela:', (58, 165),
                cv.FONT_HERSHEY_SIMPLEX, 0.68, (255, 255, 220), 1, cv.LINE_AA)
 
-    # Lista de imagens disponíveis
     y_base = 205
     if lista_imagens:
         for i, nome in enumerate(lista_imagens[:6]):
@@ -201,9 +177,7 @@ def _gerar_splash(lista_imagens=None):
 def _menu_inicial():
     """
     Seleção via janela OpenCV E via terminal em paralelo.
-    - Main thread: cv.waitKey(30) → janela sempre responsiva no Windows.
-    - Daemon thread: input() → terminal também funciona.
-    O que chegar primeiro vence; a thread de terminal morre com o processo.
+    Main thread roda cv.waitKey (janela responsiva); daemon thread roda input().
     Retorna: (img_principal, img_secundaria, modo: 'foto'|'video'|'sair')
     """
     exts = ('.jpg', '.jpeg', '.png', '.bmp')
@@ -226,18 +200,17 @@ def _menu_inicial():
     print("=" * 52)
     print("→ Pressione na janela  OU  digite aqui e pressione Enter")
 
-    resultado = [None]   # compartilhado entre threads
+    resultado = [None]
     evento = threading.Event()
 
     def _ler_terminal():
-        """Lê input() em loop até escolha válida ou até a janela ter respondido."""
         while not evento.is_set():
             try:
                 escolha = input("\nEscolha: ").strip()
             except EOFError:
                 return
             if evento.is_set():
-                return   # janela já escolheu enquanto o usuário digitava
+                return
 
             lc = escolha.lower()
             if lc in ('q', 'esc'):
@@ -258,7 +231,7 @@ def _menu_inicial():
                     evento.set()
                 return
             if escolha.isdigit() and 1 <= int(escolha) <= len(lista_imagens):
-                resultado[0] = escolha   # dígito como string '1'..'9'
+                resultado[0] = escolha
                 evento.set()
                 return
             if os.path.isfile(escolha.strip('"')):
@@ -275,7 +248,7 @@ def _menu_inicial():
         cv.imshow(NOME_JANELA, splash)
         tecla = cv.waitKey(30) & 0xFF
 
-        if tecla in (ord('q'), ord('Q'), 27):       # Q ou ESC → sair
+        if tecla in (ord('q'), ord('Q'), 27):
             resultado[0] = 'q'
             evento.set()
         elif tecla in (ord('v'), ord('V')):
@@ -285,7 +258,6 @@ def _menu_inicial():
             resultado[0] = chr(tecla)
             evento.set()
 
-    # Processa o resultado unificado
     r = resultado[0]
 
     if r is None or r == 'q':
@@ -294,7 +266,6 @@ def _menu_inicial():
     if r == 'v':
         return None, None, 'video'
 
-    # Caminho direto (via [0] ou texto digitado)
     if isinstance(r, tuple) and r[0] == 'path':
         img = _carregar_imagem(r[1])
         if img is not None:
@@ -304,7 +275,6 @@ def _menu_inicial():
         print(f"[ERRO] Não foi possível abrir: {r[1]}")
         return None, None, 'sair'
 
-    # Dígito '1'..'9'
     if isinstance(r, str) and r.isdigit():
         idx = int(r) - 1
         if 0 <= idx < len(lista_imagens):
@@ -318,10 +288,8 @@ def _menu_inicial():
     return None, None, 'sair'
 
 
-# ─── HUD ──────────────────────────────────────────────────────────────────────
-
 def _desenhar_hud(img, estado):
-    """Desenha informações de estado no topo da imagem (semitransparente)."""
+    """Desenha informações de estado no topo da imagem."""
     copia = img.copy()
     modo   = estado['modo'].upper()
     canal  = estado['canal']
@@ -352,8 +320,6 @@ def _desenhar_hud(img, estado):
                    cv.FONT_HERSHEY_SIMPLEX, 0.55, (200, 255, 200), 1, cv.LINE_AA)
     return copia
 
-_NOMES_MODOS_FACE = {}   # mantido para compatibilidade; HUD usa face_mod._NOME_CURTO diretamente
-
 
 def imprimir_menu():
     print("""
@@ -368,7 +334,7 @@ def imprimir_menu():
 ╠══════════════════════════════════════════════════════╣
 ║  [1]  Operação: Adição           [2] Subtração       ║
 ║  [3]  Operação: Blending 50/50   [4] Diferença Abs.  ║
-╠═══���══════════════════════════════════════════════════╣
+╠══════════════════════════════════════════════════════╣
 ║  [S / s]   Próximo / Anterior sticker                ║
 ║  [clique]  Colocar sticker (Modo Foto)               ║
 ║  [D]        Detecção de face — toggle                ║
@@ -385,17 +351,13 @@ def imprimir_menu():
 """)
 
 
-# ─── Callback do mouse ────────────────────────────────────────────────────────
-
-_ultimo_clique = None   # padrão MouseSticker.py da professora
+_ultimo_clique = None
 
 def _mouse_callback(event, x, y, flags, param):
     global _ultimo_clique
     if event == cv.EVENT_LBUTTONDOWN:
         _ultimo_clique = (x, y)
 
-
-# ─── Modo Foto ────────────────────────────────────────────────────────────────
 
 def loop_foto(estado):
     """Loop principal do Modo Foto. Retorna: 'sair' | 'video'"""
@@ -416,7 +378,7 @@ def loop_foto(estado):
     while True:
         idx_f = estado['idx_filtro']
 
-        # Pré-visualização em tempo real (não altera img_trabalho)
+        # pré-visualização em tempo real sem alterar img_trabalho
         preview = filtros.preview_filtro(img_trabalho, idx_f)
         display = filtros.exibir_canal(preview, estado['canal'])
         display = stickers.aplicar_lista_stickers(display, posicoes_stickers,
@@ -426,17 +388,15 @@ def loop_foto(estado):
         display = _desenhar_hud(display, estado)
         cv.imshow(NOME_JANELA, display)
 
-        # Clique do mouse → colocar sticker ou reposicionar animado
         if _ultimo_clique is not None:
             cx, cy = _ultimo_clique
             _ultimo_clique = None
-            cy_real = cy - (3 * 24 + 8)   # desconta altura do HUD
-            cy_real = max(0, cy_real)
+            cy_real = max(0, cy - (3 * 24 + 8))   # desconta altura do HUD
             if sprite.ativo:
                 sprite.definir_posicao(cx, cy_real)
                 print(f"[Sticker animado] Reposicionado para ({cx}, {cy_real})")
             elif stickers_lista:
-                _salvar_historia(estado)   # snapshot antes de adicionar sticker
+                _salvar_historia(estado)
                 posicoes_stickers.append({'x': cx, 'y': cy_real, 'idx': estado['idx_sticker']})
                 nome_s = stickers_lista[estado['idx_sticker']]['nome']
                 print(f"[Sticker colocado]: {nome_s} em ({cx}, {cy_real})")
@@ -453,7 +413,6 @@ def loop_foto(estado):
         elif tecla == ord('m'):
             imprimir_menu()
 
-        # ── Filtros ───────────────────────────────────────────────────────
         elif tecla == ord('F'):
             estado['idx_filtro'] = (idx_f + 1) % filtros.N_FILTROS
             filtros.descrever_filtro(estado['idx_filtro'])
@@ -468,22 +427,19 @@ def loop_foto(estado):
             estado['img_trabalho'] = img_trabalho
             print(f"[Filtro aplicado]: {filtros.FILTROS[idx_f]['nome']}")
 
-        # ── Undo / Redo ───────────────────────────────────────────────────
         elif tecla == ord('u'):
             _desfazer(estado)
-            img_trabalho = estado['img_trabalho']   # sync variável local
+            img_trabalho = estado['img_trabalho']
 
         elif tecla == ord('y'):
             _refazer(estado)
-            img_trabalho = estado['img_trabalho']   # sync variável local
+            img_trabalho = estado['img_trabalho']
 
-        # ── Canal ─────────────────────────────────────────────────────────
         elif tecla == ord('c'):
             canais = ['todos', 'R', 'G', 'B']
             estado['canal'] = canais[(canais.index(estado['canal']) + 1) % len(canais)]
             print(f"[Canal]: {estado['canal']}")
 
-        # ── Operações aritméticas ─────────────────────────────────────────
         elif tecla in (ord('1'), ord('2'), ord('3'), ord('4')):
             idx_op = int(chr(tecla)) - 1
             operacoes.descrever_operacao(idx_op)
@@ -491,7 +447,6 @@ def loop_foto(estado):
             img_trabalho = operacoes.aplicar_operacao(img_trabalho, img_secundaria, idx_op)
             estado['img_trabalho'] = img_trabalho
 
-        # ── Stickers ──────────────────────────────────────────────────────
         elif tecla == ord('S'):
             if stickers_lista:
                 estado['idx_sticker'] = (estado['idx_sticker'] + 1) % len(stickers_lista)
@@ -502,21 +457,18 @@ def loop_foto(estado):
                 estado['idx_sticker'] = (estado['idx_sticker'] - 1) % len(stickers_lista)
                 print(f"[Sticker]: {stickers_lista[estado['idx_sticker']]['nome']}")
 
-        # ── Face ──────────────────────────────────────────────────────────
         elif tecla == ord('d'):
             detector.toggle_ativo()
 
         elif tecla == ord('e'):
             detector.trocar_modo()
 
-        # ── Sticker animado ───────────────────────────────────────────────
         elif tecla == ord('z'):
             sprite.toggle()
             if sprite.ativo and sprite.posicao is None:
                 h, w = img_trabalho.shape[:2]
                 sprite.definir_posicao(w // 2, h // 2)
 
-        # ── Salvar / Resetar ──────────────────────────────────────────────
         elif tecla == ord('g'):
             _salvar(display)
 
@@ -527,8 +479,6 @@ def loop_foto(estado):
 
     return 'sair'
 
-
-# ─── Modo Vídeo ───────────────────────────────────────────────────────────────
 
 def loop_video(estado):
     """Loop principal do Modo Vídeo. Retorna: 'sair' | 'foto'"""
@@ -605,17 +555,13 @@ def loop_video(estado):
             _salvar(display)
 
         elif tecla == ord('r'):
-            # Reseta filtros, sprite e detector — sem imagem original no vídeo
             _resetar(estado, img_original=None)
 
     cap.release()
     return 'sair'
 
 
-# ─── Inicialização ────────────────────────────────────────────────────────────
-
 def _carregar_estado_inicial():
-    """Carrega stickers, inicializa objetos e chama o menu de boas-vindas."""
     stickers_lista = stickers.carregar_stickers()
     print(f"[Stickers carregados]: {len(stickers_lista)}")
     for i, s in enumerate(stickers_lista):
@@ -624,7 +570,6 @@ def _carregar_estado_inicial():
     detector = face_mod.DetectorFace()
     sprite   = stickers.StickerAnimado()
 
-    # Menu de boas-vindas — retorna a imagem escolhida pelo usuário
     img, img2, modo_inicial = _menu_inicial()
 
     if img is not None and img2 is None:
@@ -647,8 +592,6 @@ def _carregar_estado_inicial():
     }
 
 
-# ─── Ponto de entrada ─────────────────────────────────────────────────────────
-
 def main():
     print("=" * 56)
     print("  Processamento Gráfico: Fundamentos — Grau B")
@@ -656,7 +599,7 @@ def main():
     print("=" * 56)
 
     filtros.criar_janela_controles()
-    cv.namedWindow(NOME_JANELA)   # cria janela cedo para exibir splash
+    cv.namedWindow(NOME_JANELA)
 
     estado = _carregar_estado_inicial()
     if estado['modo'] == 'sair':
@@ -668,7 +611,6 @@ def main():
     modo = estado['modo']
     while True:
         if modo == 'foto':
-            # Se não tem imagem (veio do modo vídeo sem ter escolhido foto), pede uma
             if estado['img_original'] is None:
                 img, img2, novo_modo = _menu_inicial()
                 if novo_modo == 'sair':
